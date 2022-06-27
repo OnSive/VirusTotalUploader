@@ -14,6 +14,7 @@ using DarkUI.Forms;
 using Microsoft.CSharp.RuntimeBinder;
 using Newtonsoft.Json;
 using RestSharp;
+using Serilog;
 
 namespace uploader
 {
@@ -38,6 +39,7 @@ namespace uploader
 
         private void ChangeStatus(string text)
         {
+            Log.Logger.Verbose($"Changed status to {text}");
             if (InvokeRequired)
             {
                 this.Invoke(new Action(() => ChangeStatus(text)));
@@ -49,6 +51,7 @@ namespace uploader
 
         private void Finish(bool resetText)
         {
+            Log.Logger.Verbose($"Finished uplaod");
             if (InvokeRequired)
             {
                 this.Invoke(new Action(() => Finish(resetText)));
@@ -65,6 +68,7 @@ namespace uploader
 
         private void CloseWindow()
         {
+            Log.Logger.Verbose($"Upload window closed");
             if (InvokeRequired)
             {
                 this.Invoke(new Action(() => CloseWindow()));
@@ -76,14 +80,17 @@ namespace uploader
 
         private void Upload()
         {
+            Log.Logger.Information($"Lookup start");
             if (string.IsNullOrEmpty(_settings.ApiKey))
             {
+                Log.Logger.Warning(LocalizationHelper.Base.UploadForm_NoApiKey);
                 MessageBox.Show(LocalizationHelper.Base.UploadForm_NoApiKey, LocalizationHelper.Base.UploadForm_InvalidKey, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             if (_settings.ApiKey.Length != 64)
             {
+                Log.Logger.Warning(LocalizationHelper.Base.UploadForm_InvalidLength);
                 MessageBox.Show(LocalizationHelper.Base.UploadForm_InvalidLength, LocalizationHelper.Base.UploadForm_InvalidKey, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
@@ -109,11 +116,15 @@ namespace uploader
             {
                 var reportLink = reportJson.permalink.ToString();
                 Process.Start(reportLink);
+                Log.Logger.Information($"Lookup finished");
 
                 if (_settings.DirectUpload) CloseWindow();
             }
-            catch (RuntimeBinderException)
+            catch (RuntimeBinderException ex1)
             {
+                Log.Logger.Debug(ex1, "Exception expected on lookup failure");
+                Log.Logger.Information($"Lookup failed");
+                Log.Logger.Information($"Upload start");
                 // Json does not contain permalink which means it's a new file (or the request failed)
                 ChangeStatus(LocalizationHelper.Base.Message_Upload);
                 var scanRequest = new RestRequest("vtapi/v2/file/scan", Method.POST);
@@ -136,11 +147,14 @@ namespace uploader
                     scanLink = scanLink.Remove(scanLink.IndexOf("/detection"));
                     
                     Process.Start(scanLink);
+                    Log.Logger.Information($"Upload finished");
 
                     if (_settings.DirectUpload) CloseWindow();
                 }
-                catch (Exception)
+                catch (Exception ex2)
                 {
+                    Log.Logger.Error(ex2, "Excpetion while uploading file to TV");
+                    Log.Logger.Information($"Upload failed");
                     // Response does not contain permalink so it failed
                     ChangeStatus(LocalizationHelper.Base.Message_NoLink);
                     Finish(false);
